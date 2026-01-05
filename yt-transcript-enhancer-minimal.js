@@ -8,7 +8,7 @@
   const CONFIG = {
     PROMPT_TEXT: `Summarize the following youtube script in paragraphs, each containting bullet points. give bullet points tldr at the beginning. also give the speakers sentiment throughout the script.`,
     INCLUDE_TIMESTAMPS: false,
-    BTN_TEXT: "📋 Copy Transcript"
+    BTN_TEXT: "Copy Transcript"
   };
   
   const state = { button: null, lastUrl: location.href };
@@ -220,8 +220,9 @@
         const copied = await copyToClipboard(finalText);
         
         if (copied) {
-          state.button.textContent = '✅ Copied!';
-          await sleep(1500);
+          const wordCount = finalText.trim().split(/\s+/).length;
+          state.button.textContent = `✅ ${wordCount} words copied`;
+          await sleep(10000);
         } else {
           state.button.textContent = '❌ Copy failed';
           await sleep(2000);
