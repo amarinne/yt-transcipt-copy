@@ -1,6 +1,7 @@
 # YouTube Transcript Copy
 
-One-click YouTube transcript extraction with custom prompt injection for Enhancer for YouTube.
+Its like glasp but with no limit
+
 
 ## Features
 
