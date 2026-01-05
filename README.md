@@ -5,14 +5,12 @@ Its like glasp but with no limit
 
 ## Features
 
-- 📋 One-click transcript copy with custom prompt
-- 🎯 Works with Enhancer for YouTube extension
-- 🔄 Auto-opens transcript panel
-- 📜 Auto-scrolls to load all segments
+- One-click transcript copy with custom prompt
+- Works with Enhancer for YouTube extension
 
 ## Installation
 
-1. Install [Enhancer for YouTube](https://chrome.google.com/webstore/detail/enhancer-for-youtube) extension
+1. Install [Enhancer for YouTube](https://www.mrfdev.com/enhancer-for-youtube) extension
 2. Open Enhancer for YouTube settings
 3. Navigate to **Custom Script** section
 4. Copy the entire contents of `yt-transcript-enhancer-minimal.js`
