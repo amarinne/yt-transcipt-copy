@@ -13,7 +13,7 @@ Its like glasp but with no limit
 1. Install [Enhancer for YouTube](https://www.mrfdev.com/enhancer-for-youtube) extension
 2. Open Enhancer for YouTube settings
 3. Navigate to **Custom Script** section
-4. Copy the entire contents of `yt-transcript-enhancer-minimal.js`
+4. Copy the entire contents of [yt-transcript-enhancer-minimal.js](https://github.com/amarinne/yt-transcipt-copy/blob/main/yt-transcript-enhancer-minimal.js)
 5. Paste into the Custom Script editor
 6. Save and reload YouTube
 
@@ -26,6 +26,7 @@ Its like glasp but with no limit
    - Opens transcript panel
    - Scrolls to load all segments
    - Copies transcript with your custom prompt
+4. Paste into AI chatbot of your choice
 
 ## Configuration
 
