@@ -8,8 +8,6 @@ One-click YouTube transcript extraction with custom prompt injection for Enhance
 - 🎯 Works with Enhancer for YouTube extension
 - 🔄 Auto-opens transcript panel
 - 📜 Auto-scrolls to load all segments
-- 🔗 Single-line output (space-separated)
-- 💜 Clean purple gradient button in YouTube masthead
 
 ## Installation
 
