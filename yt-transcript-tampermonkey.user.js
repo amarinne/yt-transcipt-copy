@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Transcript Copy
 // @namespace    https://github.com/amarinne/yt-transcipt-copy
-// @version      1.0.0
+// @version      1.1.0
 // @description  One-click YouTube transcript extraction with custom prompt
 // @author       amarinne
 // @match        https://www.youtube.com/*
@@ -73,6 +73,30 @@
   }
   
   function extractSegments() {
+    // New DOM (2025+): transcript-segment-view-model custom elements
+    const newSegments = document.querySelectorAll('transcript-segment-view-model');
+    if (newSegments.length) {
+      return Array.from(newSegments)
+        .map(seg => {
+          // Timestamp is in .ytwTranscriptSegmentViewModelTimestamp (aria-hidden visual)
+          const tsEl = seg.querySelector('.ytwTranscriptSegmentViewModelTimestamp');
+          // Text is in the yt-core-attributed-string span
+          const txEl = seg.querySelector('span.yt-core-attributed-string');
+          const ts = tsEl ? clean(tsEl.textContent) : '';
+          let tx = txEl ? clean(txEl.textContent) : '';
+          if (!tx) tx = clean(seg.textContent);
+          // Strip the a11y timestamp label from text if it leaked in
+          const a11yEl = seg.querySelector('.ytwTranscriptSegmentViewModelTimestampA11yLabel');
+          if (a11yEl) {
+            const a11yText = clean(a11yEl.textContent);
+            if (tx.startsWith(a11yText)) tx = clean(tx.slice(a11yText.length));
+          }
+          return { ts, tx };
+        })
+        .filter(x => x.tx);
+    }
+
+    // Legacy DOM: ytd-transcript-segment-renderer
     const segments = document.querySelectorAll('ytd-transcript-segment-renderer');
     if (!segments.length) return [];
     
@@ -87,6 +111,11 @@
       })
       .filter(x => x.tx);
   }
+
+  function hasTranscriptSegments() {
+    return document.querySelectorAll('transcript-segment-view-model').length > 0 ||
+           document.querySelectorAll('ytd-transcript-segment-renderer').length > 0;
+  }
   
   function buildTranscriptText(includeTimestamps) {
     const segments = extractSegments();
@@ -96,7 +125,14 @@
         .join(' ')
         .trim();
     }
+
+    // New panel fallback
+    const newPanel = document.querySelector('[target-id="PAmodern_transcript_view"]');
+    if (newPanel) {
+      return clean(newPanel.innerText).replace(/\n+/g, ' ');
+    }
     
+    // Legacy fallback
     const container = document.querySelector('ytd-transcript-renderer');
     if (container) {
       return clean(container.innerText).replace(/\n+/g, ' ');
@@ -105,10 +141,24 @@
   }
   
   async function openTranscriptPanel() {
-    const existingSegments = document.querySelectorAll('ytd-transcript-segment-renderer').length;
-    if (existingSegments > 0) return true;
+    if (hasTranscriptSegments()) return true;
+
+    // Strategy 1: New DOM – look for chip or button with aria-label="Transcript"
+    // directly clickable without expanding description
+    const directSelectors = [
+      'button[aria-label="Transcript"]',
+      'chip-view-model button[aria-label="Transcript"]',
+    ];
+    for (const sel of directSelectors) {
+      const btn = document.querySelector(sel);
+      if (btn && btn.offsetParent !== null) {
+        btn.click();
+        await sleep(1500);
+        if (hasTranscriptSegments()) return true;
+      }
+    }
     
-    // Step 1: Expand description first
+    // Strategy 2: Expand description first
     const descriptionSelectors = [
       'ytd-text-inline-expander[slot="content"]',
       'ytd-watch-metadata #description',
@@ -126,42 +176,55 @@
       }
     }
     
-    // Step 2: Look for transcript button in expanded description
+    // Strategy 3: Look for transcript button in expanded description
     const buttonSelectors = [
-      'ytd-structured-description-content-renderer button',
       'ytd-video-description-transcript-section-renderer button',
+      'ytd-structured-description-content-renderer button',
       '#structured-description button'
     ];
     
     for (const selector of buttonSelectors) {
       const buttons = Array.from(document.querySelectorAll(selector));
       const btn = buttons.find(b => 
-        /show transcript|transcript/i.test(b.textContent) && 
-        b.offsetParent !== null
+        b.offsetParent !== null &&
+        (/show transcript|transcript/i.test(b.textContent) || 
+         /show transcript|transcript/i.test(b.getAttribute('aria-label') || ''))
       );
       
       if (btn) {
         btn.click();
-        await sleep(1200);
-        
-        if (document.querySelectorAll('ytd-transcript-segment-renderer').length > 0) {
-          return true;
-        }
+        await sleep(1500);
+        if (hasTranscriptSegments()) return true;
       }
+    }
+
+    // Strategy 4: Broader search for any visible "show transcript" button
+    const allButtons = Array.from(document.querySelectorAll('button'));
+    const transcriptBtn = allButtons.find(b =>
+      b.offsetParent !== null &&
+      (/show transcript/i.test(b.textContent) || /show transcript/i.test(b.getAttribute('aria-label') || ''))
+    );
+    if (transcriptBtn) {
+      transcriptBtn.click();
+      await sleep(1500);
+      if (hasTranscriptSegments()) return true;
     }
     
     return false;
   }
   
   async function scrollTranscript() {
-    const container = document.querySelector('ytd-transcript-renderer');
-    if (!container) return;
+    // New DOM: panel is [target-id="PAmodern_transcript_view"]
+    // Legacy DOM: ytd-transcript-renderer
+    const panel = document.querySelector('[target-id="PAmodern_transcript_view"]') ||
+                  document.querySelector('ytd-transcript-renderer');
+    if (!panel) return;
     
-    const scroller = container.querySelector('#body, #segments-container') || container;
+    const scroller = panel.querySelector('#body, #segments-container, .ytd-transcript-renderer') || panel;
     let lastCount = 0, stableRounds = 0;
     
     for (let i = 0; i < 80; i++) {
-      const count = document.querySelectorAll('ytd-transcript-segment-renderer').length;
+      const count = document.querySelectorAll('transcript-segment-view-model, ytd-transcript-segment-renderer').length;
       if (count === lastCount) {
         stableRounds++;
         if (stableRounds >= 5) break;
@@ -175,11 +238,11 @@
   }
   
   async function getTranscript() {
-    const existingSegments = document.querySelectorAll('ytd-transcript-segment-renderer').length;
     let text = buildTranscriptText(CONFIG.INCLUDE_TIMESTAMPS);
+    const segCount = document.querySelectorAll('transcript-segment-view-model, ytd-transcript-segment-renderer').length;
     
-    if (text && existingSegments > 5) return text;
-    if (text && existingSegments === 0) text = '';
+    if (text && segCount > 5) return text;
+    if (text && segCount === 0) text = '';
     
     const opened = await openTranscriptPanel();
     if (!opened) return '';

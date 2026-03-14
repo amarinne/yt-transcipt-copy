@@ -6,6 +6,7 @@ Its like glasp but with no limit
 ## Features
 
 - One-click transcript copy with custom prompt
+- Supports YouTube's updated 2025 DOM (`transcript-segment-view-model`) and legacy DOM (`ytd-transcript-segment-renderer`)
 
 ## Installation
 
