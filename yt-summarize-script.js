@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YT Transcript 1-Click Copy (Prompt + Transcript) — Masthead Button
 // @namespace    dxf
-// @version      0.4.0
+// @version      0.4.1
 // @description  Adds a button next to the YouTube top-left logo to copy [prompt]\n\n[transcript] to clipboard (Tampermonkey/Greasemonkey; Brave compatible).
 // @match        https://www.youtube.com/watch*
 // @grant        GM_setClipboard
@@ -213,13 +213,20 @@
 
   // ====== TRANSCRIPT EXTRACTION ======
   function findTranscriptContainer() {
-    let el = document.querySelector("ytd-transcript-renderer");
+    let el = document.querySelector("transcript-segment-view-model, .ytwTranscriptSegmentViewModelHost");
+    if (el) return el;
+
+    el = document.querySelector("ytd-transcript-renderer");
     if (el) return el;
 
     el = document.querySelector("ytd-engagement-panel-section-list-renderer ytd-transcript-renderer");
     if (el) return el;
 
+    el = document.querySelector("ytd-engagement-panel-section-list-renderer");
+    if (el && /transcript/i.test(el.textContent || "")) return el;
+
     el =
+      document.querySelector("macro-markers-panel-item-view-model, .ytwMacroMarkersPanelItemViewModelHost") ||
       document.querySelector("[target-id*='transcript']") ||
       document.querySelector("[id*='transcript']") ||
       document.querySelector("[class*='transcript']");
@@ -232,6 +239,9 @@
     const candidates = [
       root.querySelector("#body"),
       root.querySelector("#segments-container"),
+      root.querySelector("#contents"),
+      root.querySelector(".ytSectionListRendererContents"),
+      root.querySelector("yt-section-list-renderer"),
       root.querySelector("tp-yt-paper-dialog-scrollable"),
       root.querySelector("div[style*='overflow']"),
       root
@@ -245,24 +255,42 @@
     return root;
   }
 
+  function getTranscriptSegments() {
+    const modernSegments = Array.from(document.querySelectorAll("transcript-segment-view-model, .ytwTranscriptSegmentViewModelHost"));
+    if (modernSegments.length) return modernSegments;
+
+    const legacySegments = Array.from(document.querySelectorAll("ytd-transcript-segment-renderer"));
+    if (legacySegments.length) return legacySegments;
+
+    return [];
+  }
+
   function extractSegments() {
-    const segs = Array.from(document.querySelectorAll("ytd-transcript-segment-renderer"));
+    const segs = getTranscriptSegments();
     if (!segs.length) return [];
 
     return segs
       .map((seg) => {
         const tsEl =
+          seg.querySelector(".ytwTranscriptSegmentViewModelTimestampA11yLabel") ||
+          seg.querySelector(".ytwTranscriptSegmentViewModelTimestamp") ||
           seg.querySelector(".segment-timestamp") ||
           seg.querySelector("[class*='timestamp']") ||
           null;
 
         const txEl =
+          seg.querySelector("span[role='text']") ||
+          seg.querySelector(".ytAttributedStringHost") ||
           seg.querySelector(".segment-text") ||
           seg.querySelector("[class*='segment-text']") ||
           null;
 
         const ts = tsEl ? clean(tsEl.textContent) : "";
         let tx = txEl ? clean(txEl.textContent) : clean(seg.textContent);
+
+        if (!tx && seg.children.length) {
+          tx = clean(Array.from(seg.children).map((child) => child.textContent).join(" "));
+        }
 
         if (ts && tx.startsWith(ts)) tx = clean(tx.slice(ts.length));
         return { ts, tx };
@@ -275,7 +303,7 @@
     if (segments.length) {
       return segments
         .map(({ ts, tx }) => (includeTimestamps && ts ? `${ts} ${tx}` : tx))
-        .join("\n")
+        .join(' ')
         .trim();
     }
 
@@ -290,7 +318,7 @@
     while (Date.now() - start < timeoutMs) {
       const container = findTranscriptContainer();
       if (container) {
-        const segs = document.querySelectorAll("ytd-transcript-segment-renderer");
+        const segs = getTranscriptSegments();
         if (segs && segs.length > 0) return true;
       }
       await sleep(150);
@@ -309,7 +337,7 @@
     let stableRounds = 0;
 
     for (let i = 0; i < SCROLL_MAX_LOOPS; i++) {
-      const segCount = document.querySelectorAll("ytd-transcript-segment-renderer").length;
+      const segCount = getTranscriptSegments().length;
 
       if (segCount === lastCount) stableRounds++;
       else stableRounds = 0;
@@ -332,6 +360,7 @@
     );
 
     for (const n of nodes) {
+      if (n.id === BTN_ID) continue;
       const t = (n.textContent || "").trim();
       if (!t) continue;
       if (!regex.test(t)) continue;
@@ -351,7 +380,7 @@
     log("Is watch page:", isWatchPage());
 
     // Check if transcript is already visible
-    const existingSegments = document.querySelectorAll("ytd-transcript-segment-renderer").length;
+    const existingSegments = getTranscriptSegments().length;
     if (existingSegments > 0) {
       log("✓ Transcript already visible (", existingSegments, "segments)");
       return true;
@@ -383,7 +412,7 @@
 
     // Try to find direct transcript button
     log("🔍 Method 1: Searching for direct transcript button...");
-    const directClick = findClickableByText(/show transcript|transcript/i);
+    const directClick = findClickableByText(/show transcript/i);
     if (directClick) {
       log("✓ Found direct transcript button:", {
         tag: directClick.tagName,
@@ -396,7 +425,7 @@
       await sleep(800);
       
       // Verify it opened
-      const segments = document.querySelectorAll("ytd-transcript-segment-renderer").length;
+      const segments = getTranscriptSegments().length;
       if (segments > 0) {
         log("✅ Transcript opened successfully, found", segments, "segments");
         return true;
@@ -432,7 +461,7 @@
       const menu = document.querySelector('ytd-menu-popup-renderer, tp-yt-paper-listbox');
       log(menu ? "✓ Menu opened" : "⚠️ Menu not detected");
 
-      const menuItem = findClickableByText(/show transcript|transcript/i, document);
+      const menuItem = findClickableByText(/transcript/i, document);
       if (menuItem) {
         log("✓ Found transcript in menu:", menuItem.textContent.trim());
         menuItem.click();

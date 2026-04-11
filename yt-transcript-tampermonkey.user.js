@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Transcript Copy
 // @namespace    https://github.com/amarinne/yt-transcipt-copy
-// @version      1.1.0
+// @version      1.1.1
 // @description  One-click YouTube transcript extraction with custom prompt
 // @author       amarinne
 // @match        https://www.youtube.com/*
@@ -72,40 +72,37 @@
     }
   }
   
-  function extractSegments() {
-    // New DOM (2025+): transcript-segment-view-model custom elements
-    const newSegments = document.querySelectorAll('transcript-segment-view-model');
-    if (newSegments.length) {
-      return Array.from(newSegments)
-        .map(seg => {
-          // Timestamp is in .ytwTranscriptSegmentViewModelTimestamp (aria-hidden visual)
-          const tsEl = seg.querySelector('.ytwTranscriptSegmentViewModelTimestamp');
-          // Text is in the yt-core-attributed-string span
-          const txEl = seg.querySelector('span.yt-core-attributed-string');
-          const ts = tsEl ? clean(tsEl.textContent) : '';
-          let tx = txEl ? clean(txEl.textContent) : '';
-          if (!tx) tx = clean(seg.textContent);
-          // Strip the a11y timestamp label from text if it leaked in
-          const a11yEl = seg.querySelector('.ytwTranscriptSegmentViewModelTimestampA11yLabel');
-          if (a11yEl) {
-            const a11yText = clean(a11yEl.textContent);
-            if (tx.startsWith(a11yText)) tx = clean(tx.slice(a11yText.length));
-          }
-          return { ts, tx };
-        })
-        .filter(x => x.tx);
-    }
+  function getTranscriptSegments() {
+    const modernSegments = Array.from(document.querySelectorAll('transcript-segment-view-model, .ytwTranscriptSegmentViewModelHost'));
+    if (modernSegments.length) return modernSegments;
 
-    // Legacy DOM: ytd-transcript-segment-renderer
-    const segments = document.querySelectorAll('ytd-transcript-segment-renderer');
+    const legacySegments = Array.from(document.querySelectorAll('ytd-transcript-segment-renderer'));
+    if (legacySegments.length) return legacySegments;
+
+    return [];
+  }
+
+  function extractSegments() {
+    const segments = getTranscriptSegments();
     if (!segments.length) return [];
-    
-    return Array.from(segments)
+
+    return segments
       .map(seg => {
-        const tsEl = seg.querySelector('.segment-timestamp, [class*="timestamp"]');
-        const txEl = seg.querySelector('.segment-text, [class*="segment-text"]');
+        const tsEl =
+          seg.querySelector('.ytwTranscriptSegmentViewModelTimestampA11yLabel') ||
+          seg.querySelector('.ytwTranscriptSegmentViewModelTimestamp') ||
+          seg.querySelector('.segment-timestamp, [class*="timestamp"]');
+        const txEl =
+          seg.querySelector("span[role='text']") ||
+          seg.querySelector('.ytAttributedStringHost') ||
+          seg.querySelector('span.yt-core-attributed-string') ||
+          seg.querySelector('.segment-text, [class*="segment-text"]');
+
         const ts = tsEl ? clean(tsEl.textContent) : '';
         let tx = txEl ? clean(txEl.textContent) : clean(seg.textContent);
+        if (!tx && seg.children.length) {
+          tx = clean(Array.from(seg.children).map((child) => child.textContent).join(' '));
+        }
         if (ts && tx.startsWith(ts)) tx = clean(tx.slice(ts.length));
         return { ts, tx };
       })
@@ -113,7 +110,7 @@
   }
 
   function hasTranscriptSegments() {
-    return document.querySelectorAll('transcript-segment-view-model').length > 0 ||
+    return document.querySelectorAll('transcript-segment-view-model, .ytwTranscriptSegmentViewModelHost').length > 0 ||
            document.querySelectorAll('ytd-transcript-segment-renderer').length > 0;
   }
   
@@ -224,7 +221,7 @@
     let lastCount = 0, stableRounds = 0;
     
     for (let i = 0; i < 80; i++) {
-      const count = document.querySelectorAll('transcript-segment-view-model, ytd-transcript-segment-renderer').length;
+      const count = getTranscriptSegments().length;
       if (count === lastCount) {
         stableRounds++;
         if (stableRounds >= 5) break;
@@ -239,7 +236,7 @@
   
   async function getTranscript() {
     let text = buildTranscriptText(CONFIG.INCLUDE_TIMESTAMPS);
-    const segCount = document.querySelectorAll('transcript-segment-view-model, ytd-transcript-segment-renderer').length;
+    const segCount = getTranscriptSegments().length;
     
     if (text && segCount > 5) return text;
     if (text && segCount === 0) text = '';
